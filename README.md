@@ -12,6 +12,14 @@ This dashboard was developed for a UAE hospital to monitor medical waste operati
 
 The project was selected by GDRFA to be showcased at the AI X Lab Inauguration (June 2025).
 
+## Screenshots
+
+### Overview Dashboard
+![Overview Dashboard](screenshots/overview.jpg)
+
+### Optimization & Treatment Routing
+![Optimization](screenshots/optimization.jpg)
+
 ## Features
 
 - **Overview Dashboard** — KPIs, waste composition, department breakdown, AI recommendations
