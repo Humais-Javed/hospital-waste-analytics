@@ -8,7 +8,7 @@ A full-stack Flask dashboard for hospital medical waste management with AI-power
 
 ## About
 
-This dashboard was developed for a UAE hospital to monitor medical waste operations across seven interactive screens, processing 62,000+ operational records. It surfaces forecasting and optimization model outputs through an accessible interface designed for non-technical hospital management, and integrates a vision-based AI assistant that analyzes live dashboard screens to provide context-aware recommendations.
+This dashboard was developed for a hospital to monitor medical waste operations across seven interactive screens, processing 62,000+ operational records. It surfaces forecasting and optimization model outputs through an accessible interface designed for non-technical hospital management, and integrates a vision-based AI assistant that analyzes live dashboard screens to provide context-aware recommendations.
 
 The project was selected by GDRFA to be showcased at the AI X Lab Inauguration (June 2025).
 
