@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% block title %}Trends & Forecasting - MedWaste Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Trends & Forecasting</h1>
+    <p class="page-subtitle">LightGBM-based waste forecasting model · 2026 predictions with confidence bands</p>
+</div>
+
+{% if kpis.error %}
+<div class="error-banner">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+    </svg>
+    <span>{{ kpis.error }}</span>
+</div>
+{% else %}
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Forecasted Waste (Next Month)</div>
+        <div class="kpi-value blue">{{ "{:,.0f}".format(kpis.next_month_forecast) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">{{ kpis.next_month_name }} | {{ "{:+.1f}".format(kpis.next_month_change) }}% vs Jan 2025</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Forecasted Annual Total</div>
+        <div class="kpi-value amber">{{ "{:,.0f}".format(kpis.annual_forecast) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">{{ "{:+.1f}".format(kpis.annual_change) }}% vs 2025 full year</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Peak Month Forecast</div>
+        <div class="kpi-value purple">{{ kpis.peak_month }}</div>
+        <div class="kpi-sublabel">Highest forecasted volume month</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Forecast Accuracy</div>
+        <div class="kpi-value green">{{ "{:.0f}".format(kpis.accuracy) }}%</div>
+        <div class="kpi-sublabel">Avg SMAPE accuracy (2-fold CV)</div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="chart-grid">
+    <!-- Forecast with Confidence Band -->
+    <div class="chart-card full-width">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Waste Forecast with Confidence Band</h3>
+                <p class="chart-subtitle">Actual vs forecast with P10–P90 uncertainty band</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 350px;">
+            <canvas id="forecastBandChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="chart-grid">
+    <!-- Seasonal Patterns -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Seasonal Patterns</h3>
+                <p class="chart-subtitle">Monthly waste by year (2022–2025)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="seasonalChart"></canvas>
+        </div>
+    </div>
+
+    <!-- 2026 vs 2025 Monthly -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">2026 Monthly Forecast</h3>
+                <p class="chart-subtitle">Forecasted waste by month vs 2025 actual</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="comparisonChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- AI Insights -->
+<div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">AI Insights</h3>
+            <p class="chart-subtitle">Analysis of forecasting trends</p>
+        </div>
+    </div>
+    <div class="ai-content" id="aiInsights">
+        <div class="ai-loading">Generating insights...</div>
+    </div>
+    <div class="ai-chat-container" style="margin-top: 16px;">
+        <input type="text" id="aiQuestion" class="ai-input" placeholder="Ask a question about the forecast...">
+        <button onclick="askAI()" class="ai-send-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+        </button>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .error-banner {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 16px 20px;
+        background: rgba(239, 68, 68, 0.1);
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        border-radius: 8px;
+        color: #ef4444;
+        margin-bottom: 24px;
+    }
+    .chart-card.full-width {
+        grid-column: 1 / -1;
+    }
+    .kpi-value.purple {
+        color: #a855f7;
+    }
+    .ai-content {
+        padding: 16px;
+        background: rgba(255, 255, 255, 0.02);
+        border-radius: 8px;
+        min-height: 100px;
+    }
+    .ai-loading {
+        color: var(--text-muted);
+        font-style: italic;
+    }
+    .ai-chat-container {
+        display: flex;
+        gap: 8px;
+    }
+    .ai-input {
+        flex: 1;
+        padding: 10px 14px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+    .ai-input:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+    }
+    .ai-send-btn {
+        padding: 10px 16px;
+        background: var(--accent-blue);
+        border: none;
+        border-radius: 6px;
+        color: white;
+        cursor: pointer;
+        transition: opacity 0.2s;
+    }
+    .ai-send-btn:hover {
+        opacity: 0.9;
+    }
+</style>
+
+<script>
+{% if not kpis.error %}
+    // Forecast with Confidence Band Chart
+    fetch('/api/forecast-with-bands')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('forecastBandChart').parentElement.innerHTML = 
+                    '<p style="color: var(--text-muted); text-align: center; padding: 40px;">'+data.error+'</p>';
+                return;
+            }
+            
+            new Chart(document.getElementById('forecastBandChart'), {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: 'Actual',
+                            data: data.actuals,
+                            borderColor: '#3b82f6',
+                            backgroundColor: '#3b82f6',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.3,
+                            spanGaps: false
+                        },
+                        {
+                            label: 'Forecast',
+                            data: data.forecasts,
+                            borderColor: '#10b981',
+                            backgroundColor: '#10b981',
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            tension: 0.3,
+                            borderDash: [5, 5],
+                            spanGaps: false
+                        },
+                        {
+                            label: 'P90 Upper',
+                            data: data.p90_upper,
+                            borderColor: 'rgba(16, 185, 129, 0.3)',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            fill: '+1',
+                            tension: 0.3,
+                            spanGaps: false
+                        },
+                        {
+                            label: 'P10 Lower',
+                            data: data.p10_lower,
+                            borderColor: 'rgba(16, 185, 129, 0.3)',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            fill: false,
+                            tension: 0.3,
+                            spanGaps: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: {
+                                filter: function(item) {
+                                    // Hide P10/P90 from legend
+                                    return !item.text.includes('P10') && !item.text.includes('P90');
+                                }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    if (ctx.parsed.y === null) return null;
+                                    return ctx.dataset.label + ': ' + ctx.parsed.y.toLocaleString() + ' kg';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: { color: '#2a3548' }
+                        },
+                        y: {
+                            grid: { color: '#2a3548' },
+                            ticks: {
+                                callback: val => (val/1000).toFixed(0) + 'k kg'
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+    // Seasonal Patterns Chart
+    fetch('/api/seasonal-patterns')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('seasonalChart').parentElement.innerHTML = 
+                    '<p style="color: var(--text-muted); text-align: center; padding: 40px;">'+data.error+'</p>';
+                return;
+            }
+            
+            new Chart(document.getElementById('seasonalChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: '2022',
+                            data: data.data_2022,
+                            backgroundColor: '#3b82f6',  // Blue
+                            borderRadius: 4
+                        },
+                        {
+                            label: '2023',
+                            data: data.data_2023,
+                            backgroundColor: '#10b981',  // Green
+                            borderRadius: 4
+                        },
+                        {
+                            label: '2024',
+                            data: data.data_2024,
+                            backgroundColor: '#f59e0b',  // Amber
+                            borderRadius: 4
+                        },
+                        {
+                            label: '2025',
+                            data: data.data_2025,
+                            backgroundColor: '#ef4444',  // Red
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            grid: { color: '#2a3548' },
+                            ticks: {
+                                callback: val => (val/1000).toFixed(0) + 'k'
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+    // 2026 vs 2025 Monthly Comparison Chart
+    fetch('/api/monthly-comparison')
+        .then(res => res.json())
+        .then(data => {
+            if (data.error) {
+                document.getElementById('comparisonChart').parentElement.innerHTML = 
+                    '<p style="color: var(--text-muted); text-align: center; padding: 40px;">'+data.error+'</p>';
+                return;
+            }
+            
+            new Chart(document.getElementById('comparisonChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: '2025 Actual',
+                            data: data.actual_2025,
+                            backgroundColor: '#64748b',
+                            borderRadius: 4
+                        },
+                        {
+                            label: '2026 Forecast',
+                            data: data.forecast_2026,
+                            backgroundColor: '#10b981',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            grid: { color: '#2a3548' },
+                            ticks: {
+                                callback: val => (val/1000).toFixed(0) + 'k'
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+
+    function askAI() {
+        const question = document.getElementById('aiQuestion').value;
+        if (!question.trim()) return;
+        
+        document.getElementById('aiInsights').innerHTML = '<div class="ai-loading">Thinking...</div>';
+        
+        fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: question,
+                page: 'trends'
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('aiInsights').innerHTML = data.response || 
+                '<p style="color: var(--text-muted);">Could not get response.</p>';
+            document.getElementById('aiQuestion').value = '';
+        })
+        .catch(() => {
+            document.getElementById('aiInsights').innerHTML = 
+                '<p style="color: var(--text-muted);">AI unavailable.</p>';
+        });
+    }
+
+
+    // Allow Enter key to submit
+    document.getElementById('aiQuestion').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') askAI();
+    });
+{% endif %}
+</script>
+{% endblock %}

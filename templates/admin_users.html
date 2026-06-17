@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users - MedWaste{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">User Management</h1>
+    <p class="page-subtitle">Add and manage system users</p>
+</div>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="flash-container">
+            {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endwith %}
+
+<div class="admin-grid">
+    <!-- Add User Form -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Add New User</h3>
+                <p class="chart-subtitle">Create a new account</p>
+            </div>
+        </div>
+        
+        <form method="POST" action="{{ url_for('auth.admin_add_user') }}" class="add-user-form">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" placeholder="Enter username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Enter password" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="role">Role</label>
+                <select id="role" name="role">
+                    <option value="user">User</option>
+                    <option value="admin">Admin</option>
+                </select>
+            </div>
+            
+            <button type="submit" class="btn-primary">Create User</button>
+        </form>
+    </div>
+
+    <!-- Users List -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">All Users</h3>
+                <p class="chart-subtitle">{{ users|length }} total users</p>
+            </div>
+        </div>
+        
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        {{ user.username }}
+                        {% if user.id == current_user.id %}
+                            <span class="you-badge">You</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="role-badge role-{{ user.role }}">{{ user.role }}</span>
+                    </td>
+                    <td>
+                        {% if user.id != current_user.id %}
+                            <form method="POST" action="{{ url_for('auth.admin_delete_user', user_id=user.id) }}" 
+                                  style="display: inline;"
+                                  onsubmit="return confirm('Are you sure you want to delete {{ user.username }}?');">
+                                <button type="submit" class="btn-delete">Delete</button>
+                            </form>
+                        {% else %}
+                            <span class="text-muted">—</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<style>
+    .admin-grid {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 24px;
+    }
+    
+    .flash-container {
+        margin-bottom: 24px;
+    }
+    
+    .flash {
+        padding: 12px 16px;
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    
+    .flash-success {
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid var(--accent-green);
+        color: var(--accent-green);
+    }
+    
+    .flash-error {
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid var(--accent-red);
+        color: var(--accent-red);
+    }
+    
+    .add-user-form {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .form-group label {
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-secondary);
+    }
+    
+    .form-group input,
+    .form-group select {
+        padding: 10px 14px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        font-size: 14px;
+        font-family: inherit;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--accent-blue);
+    }
+    
+    .form-group select {
+        cursor: pointer;
+    }
+    
+    .btn-primary {
+        padding: 12px 20px;
+        background: var(--accent-blue);
+        border: none;
+        border-radius: var(--radius-sm);
+        color: white;
+        font-size: 14px;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .btn-primary:hover {
+        background: #2563eb;
+    }
+    
+    .btn-delete {
+        padding: 6px 12px;
+        background: rgba(239, 68, 68, 0.15);
+        border: 1px solid var(--accent-red);
+        border-radius: var(--radius-sm);
+        color: var(--accent-red);
+        font-size: 12px;
+        font-weight: 500;
+        font-family: inherit;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .btn-delete:hover {
+        background: rgba(239, 68, 68, 0.25);
+    }
+    
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .data-table th {
+        text-align: left;
+        padding: 12px;
+        color: var(--text-muted);
+        font-weight: 600;
+        border-bottom: 1px solid var(--border-color);
+        text-transform: uppercase;
+        font-size: 11px;
+    }
+    
+    .data-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color);
+        color: var(--text-secondary);
+    }
+    
+    .data-table tbody tr:hover {
+        background: var(--bg-card-hover);
+    }
+    
+    .you-badge {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: rgba(59, 130, 246, 0.15);
+        color: var(--accent-blue);
+        border-radius: 4px;
+        margin-left: 8px;
+        font-weight: 600;
+    }
+    
+    .text-muted {
+        color: var(--text-muted);
+    }
+    
+    @media (max-width: 1024px) {
+        .admin-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}

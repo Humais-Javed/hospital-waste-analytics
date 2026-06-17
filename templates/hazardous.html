@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Hazardous Waste - MedWaste Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Hazardous Waste & Compliance</h1>
+    <p class="page-subtitle">Tracking infectious, sharps, and chemotherapy waste</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Red Bag Waste</div>
+        <div class="kpi-value red">{{ "{:,.0f}".format(kpis.red_waste) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">Highly Infectious</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Yellow Bag Waste</div>
+        <div class="kpi-value amber">{{ "{:,.0f}".format(kpis.yellow_waste) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">Infectious & Anatomical</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Blue Bag Waste</div>
+        <div class="kpi-value blue">{{ "{:,.0f}".format(kpis.blue_waste) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">Chemotherapy</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Hazardous % of Total</div>
+        <div class="kpi-value green">{{ "{:.1f}".format(kpis.hazardous_pct) }}%</div>
+        <div class="kpi-sublabel">Of all hospital waste</div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="chart-grid">
+    <!-- Hazardous Waste by Department -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Hazardous Waste by Department</h3>
+                <p class="chart-subtitle">Red & Blue bag volume per department (Top 10)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 350px;">
+            <canvas id="deptChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Hazardous Waste Trend -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Hazardous Waste Trend</h3>
+                <p class="chart-subtitle">Waste types over time</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 350px;">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="chart-grid">
+    <!-- Bag Count vs Weight -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Bag Count vs Weight Comparison</h3>
+                <p class="chart-subtitle">Bag count vs kg per waste type</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 350px;">
+            <canvas id="comparisonChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Avg Weight per Bag Table -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Avg Weight per Bag</h3>
+                <p class="chart-subtitle">Average kg per bag by waste type</p>
+            </div>
+        </div>
+        <div style="padding: 20px;">
+            <table style="width: 100%; font-size: 14px; color: var(--text-secondary); border-collapse: collapse;">
+                <thead>
+                    <tr style="border-bottom: 2px solid var(--border-color);">
+                        <th style="text-align: left; padding: 12px; color: var(--text-muted);">Waste Type</th>
+                        <th style="text-align: right; padding: 12px; color: var(--text-muted);">Bags</th>
+                        <th style="text-align: right; padding: 12px; color: var(--text-muted);">Avg kg/bag</th>
+                    </tr>
+                </thead>
+                <tbody id="avgWeightTable">
+                    <tr><td colspan="3" style="padding: 12px; text-align: center;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Row 3: AI Insights (Full Width) -->
+<div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">AI Insights</h3>
+            <p class="chart-subtitle">Hazardous waste analysis</p>
+        </div>
+    </div>
+    <div style="padding: 0 20px 20px;">
+        <div class="ai-content" id="aiRecommendation" style="font-size: 14px; margin-bottom: 16px;">
+            <div class="ai-loading">Analyzing hazardous waste data...</div>
+        </div>
+        <div class="ai-chat-container" style="display: flex; gap: 8px;">
+            <input type="text" id="chatInput" placeholder="Ask about hazardous waste patterns..." style="flex: 1; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 14px;">
+            <button id="chatSend" style="padding: 10px 16px; background: var(--accent-blue); border: none; border-radius: 6px; color: white; cursor: pointer;">Send</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const wasteColors = {
+        'Yellow': '#eab308',
+        'Red': '#ef4444',
+        'Blue': '#3b82f6'
+    };
+
+    // Hazardous Waste by Department (Horizontal Bar)
+    fetch(fetchWithFilters('/api/hazardous-by-department'))
+        .then(res => res.json())
+        .then(data => {
+            new Chart(document.getElementById('deptChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.departments,
+                    datasets: [
+                        {
+                            label: 'Red (Highly Infectious)',
+                            data: data.red,
+                            backgroundColor: wasteColors.Red,
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Blue (Chemotherapy)',
+                            data: data.blue,
+                            backgroundColor: wasteColors.Blue,
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { 
+                            stacked: true,
+                            grid: { color: '#2a3548' },
+                            ticks: { callback: val => val.toLocaleString() + ' kg' }
+                        },
+                        y: { 
+                            stacked: true,
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        });
+
+    // Hazardous Waste Trend
+    fetch(fetchWithFilters('/api/hazardous-trend'))
+        .then(res => res.json())
+        .then(data => {
+            const datasets = Object.keys(data.datasets).map(type => ({
+                label: data.waste_labels[type] || type,
+                data: data.datasets[type],
+                borderColor: data.waste_colors[type] || '#888',
+                backgroundColor: 'transparent',
+                tension: 0.4,
+                borderWidth: 2
+            }));
+            
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { 
+                            grid: { color: '#2a3548' },
+                            ticks: { callback: val => val.toLocaleString() + ' kg' }
+                        }
+                    }
+                }
+            });
+        });
+
+    // Bag Count vs Weight Comparison (Clustered Bar)
+    fetch(fetchWithFilters('/api/bag-count-vs-weight'))
+        .then(res => res.json())
+        .then(data => {
+            new Chart(document.getElementById('comparisonChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.types,
+                    datasets: [
+                        {
+                            label: 'Bag Count',
+                            data: data.bags,
+                            backgroundColor: '#8b5cf6',
+                            borderRadius: 4,
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Weight (kg)',
+                            data: data.weights,
+                            backgroundColor: '#06b6d4',
+                            borderRadius: 4,
+                            yAxisID: 'y1'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            grid: { color: '#2a3548' },
+                            title: { display: true, text: 'Bag Count', color: 'var(--text-muted)' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            grid: { display: false },
+                            title: { display: true, text: 'Weight (kg)', color: 'var(--text-muted)' }
+                        }
+                    }
+                }
+            });
+        });
+
+    // Avg Weight per Bag Table
+    fetch(fetchWithFilters('/api/avg-weight-per-bag'))
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.getElementById('avgWeightTable');
+            if (data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="3" style="padding: 12px; text-align: center;">No data available</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.data.map((row, idx) => {
+                const isTotal = row.type === 'Total';
+                const style = isTotal ? 'font-weight: 600; border-top: 2px solid var(--border-color);' : 'border-bottom: 1px solid var(--border-color);';
+                return `
+                    <tr style="${style}">
+                        <td style="padding: 12px;">${row.type}</td>
+                        <td style="padding: 12px; text-align: right;">${row.bags.toLocaleString()}</td>
+                        <td style="padding: 12px; text-align: right; font-weight: 500;">${row.avg_kg.toFixed(2)} kg</td>
+                    </tr>
+                `;
+            }).join('');
+        });
+
+    // AI Recommendation
+    fetch('/api/ai-recommendation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: 'hazardous' })
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('aiRecommendation').innerHTML = '<p>' + (data.recommendation || 'AI insights unavailable.') + '</p>';
+    })
+    .catch(() => {
+        document.getElementById('aiRecommendation').innerHTML = '<p style="color: var(--text-muted);">AI insights unavailable.</p>';
+    });
+
+    // AI Chat
+    document.getElementById('chatSend').addEventListener('click', sendChat);
+    document.getElementById('chatInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sendChat();
+    });
+
+    function sendChat() {
+        const input = document.getElementById('chatInput');
+        const question = input.value.trim();
+        if (!question) return;
+        
+        document.getElementById('aiRecommendation').innerHTML = '<p style="color: var(--text-muted);">Thinking...</p>';
+        input.value = '';
+        
+        fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: question, page: 'hazardous' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('aiRecommendation').innerHTML = '<p>' + (data.response || 'Could not get response.') + '</p>';
+        })
+        .catch(() => {
+            document.getElementById('aiRecommendation').innerHTML = '<p style="color: var(--text-muted);">AI unavailable.</p>';
+        });
+    }
+</script>
+{% endblock %}

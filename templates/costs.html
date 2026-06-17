@@ -1,0 +1,270 @@
+{% extends "base.html" %}
+{% block title %}Costs - MedWaste Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Costs</h1>
+    <p class="page-subtitle">Cost tracking across medical and general waste streams</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Waste Management Cost</div>
+        <div class="kpi-value blue">${{ "{:,.0f}".format(kpis.total_cost) }}</div>
+        <div class="kpi-sublabel">Total disposal + transport</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Cost per kg</div>
+        <div class="kpi-value amber">${{ "{:.2f}".format(kpis.cost_per_kg) }}</div>
+        <div class="kpi-sublabel">Per kilogram of waste</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Transport Cost Share</div>
+        <div class="kpi-value purple">{{ "{:.1f}".format(kpis.transport_share) }}%</div>
+        <div class="kpi-sublabel">Transport as % of total cost</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Net Recycling Spendings</div>
+        <div class="kpi-value green">${{ "{:,.0f}".format(kpis.recycling_savings) }}</div>
+        <div class="kpi-sublabel">Recycling vs landfill cost diff</div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="chart-grid">
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Cost by Waste Stream</h3>
+                <p class="chart-subtitle">Breakdown by waste type</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="wasteTypeChart"></canvas>
+        </div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Cost Trend</h3>
+                <p class="chart-subtitle">Transport and disposal over time (2024–2025)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="chart-grid">
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Cost by Department</h3>
+                <p class="chart-subtitle">Top 10 departments by cost</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="departmentChart"></canvas>
+        </div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Monthly Recycling vs Landfill Cost</h3>
+                <p class="chart-subtitle">Recycling cost vs landfill cost (2024–2025)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="recyclingChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- AI Insights -->
+<div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">AI Insights</h3>
+            <p class="chart-subtitle">Cost analysis and recommendations</p>
+        </div>
+    </div>
+    <div class="ai-content" id="aiInsights">
+        <p style="color: var(--text-muted);">Loading AI insights...</p>
+    </div>
+    <div class="ai-chat-container" style="margin-top: 16px; display: flex; gap: 8px;">
+        <input type="text" id="aiQuestion" placeholder="Ask a question about costs..." style="flex: 1; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 14px;">
+        <button onclick="askAI()" style="padding: 10px 16px; background: var(--accent-blue); border: none; border-radius: 6px; color: white; cursor: pointer;">Send</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const period = urlParams.get('period') || 'yearly';
+    const startDate = urlParams.get('start_date') || '';
+    const endDate = urlParams.get('end_date') || '';
+    const filterQuery = 'period=' + period + '&start_date=' + startDate + '&end_date=' + endDate;
+
+    // V1: Cost by Waste Stream (Donut)
+    fetch('/api/cost-by-waste-type?' + filterQuery)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            new Chart(document.getElementById('wasteTypeChart'), {
+                type: 'doughnut',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        data: data.values,
+                        backgroundColor: data.colors,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'right',
+                            labels: { color: '#94a3b8', padding: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    var total = ctx.dataset.data.reduce(function(a, b) { return a + b; }, 0);
+                                    var pct = ((ctx.raw / total) * 100).toFixed(1);
+                                    return ctx.label + ': $' + ctx.raw.toLocaleString() + ' (' + pct + '%)';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('wasteTypeChart error:', err); });
+
+    // V2: Cost Trend (Line)
+    fetch('/api/cost-trend')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Transport', data: data.transport, borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 3, tension: 0.3, hidden: false },
+                        { label: 'Disposal', data: data.disposal, borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderWidth: 2, pointRadius: 3, tension: 0.3, hidden: true },
+                        { label: 'Total', data: data.total, borderColor: '#10b981', backgroundColor: '#10b981', borderWidth: 2, pointRadius: 3, tension: 0.3, hidden: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { color: '#2a3548' } },
+                        y: { 
+                            grid: { color: '#2a3548' },
+                            ticks: { callback: function(val) { return '$' + val.toLocaleString(); } }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('trendChart error:', err); });
+
+    // V3: Cost by Department (Horizontal Bar)
+    fetch('/api/cost-by-department?' + filterQuery)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            new Chart(document.getElementById('departmentChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Cost',
+                        data: data.values,
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { 
+                            grid: { color: '#2a3548' },
+                            ticks: { callback: function(val) { return '$' + val.toLocaleString(); } }
+                        },
+                        y: { grid: { display: false } }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('departmentChart error:', err); });
+
+    // V4: Recycling vs Landfill Cost (Clustered Bar)
+    fetch('/api/recycling-vs-landfill-cost')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            new Chart(document.getElementById('recyclingChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Recycling Cost', data: data.recycling, backgroundColor: '#10b981', borderRadius: 4 },
+                        { label: 'Landfill Cost', data: data.landfill, backgroundColor: '#64748b', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { 
+                            grid: { color: '#2a3548' },
+                            ticks: { callback: function(val) { return '$' + val.toLocaleString(); } }
+                        }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('recyclingChart error:', err); });
+
+    // AI Chat function
+    window.askAI = function() {
+        var question = document.getElementById('aiQuestion').value;
+        if (!question.trim()) return;
+        
+        document.getElementById('aiInsights').innerHTML = '<p style="color: var(--text-muted);">Thinking...</p>';
+        
+        fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: question, page: 'costs' })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            document.getElementById('aiInsights').innerHTML = '<p>' + (data.response || 'Could not get response.') + '</p>';
+            document.getElementById('aiQuestion').value = '';
+        })
+        .catch(function() {
+            document.getElementById('aiInsights').innerHTML = '<p style="color: var(--text-muted);">AI unavailable.</p>';
+        });
+    };
+
+    document.getElementById('aiQuestion').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') window.askAI();
+    });
+})();
+</script>
+{% endblock %}

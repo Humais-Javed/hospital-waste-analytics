@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Shift Analysis - MedWaste{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Shift Analysis</h1>
+    <p class="page-subtitle">Waste generation by hospital shift</p>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Shift A</div>
+        <div class="kpi-value blue">{{ "{:,.0f}".format(kpis.shift_a_weight) }} kg</div>
+        <div class="kpi-sublabel">{{ kpis.shift_a_pct }}% of total</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Shift B</div>
+        <div class="kpi-value green">{{ "{:,.0f}".format(kpis.shift_b_weight) }} kg</div>
+        <div class="kpi-sublabel">{{ kpis.shift_b_pct }}% of total</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Shift C</div>
+        <div class="kpi-value amber">{{ "{:,.0f}".format(kpis.shift_c_weight) }} kg</div>
+        <div class="kpi-sublabel">{{ kpis.shift_c_pct }}% of total</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Total Bags</div>
+        <div class="kpi-value purple">{{ "{:,}".format(kpis.shift_a_bags + kpis.shift_b_bags + kpis.shift_c_bags) }}</div>
+    </div>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-card">
+        <div class="chart-header"><h3 class="chart-title">Shift Comparison</h3></div>
+        <div class="chart-container"><canvas id="shiftChart"></canvas></div>
+    </div>
+    
+    <div class="ai-card">
+        <div class="ai-header">
+            <div class="ai-icon">🤖</div>
+            <div><div class="ai-title">AI Insights</div></div>
+        </div>
+        <div class="ai-content" id="aiRecommendation"><div class="ai-loading">Analyzing...</div></div>
+        <div class="ai-chat">
+            <div class="ai-chat-history" id="chatHistory"></div>
+            <div class="ai-chat-input">
+                <input type="text" id="chatInput" placeholder="Ask about shifts..." />
+                <button id="chatSend">→</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    fetch(fetchWithFilters('/api/shift-comparison'))
+        .then(res => res.json())
+        .then(data => {
+            new Chart(document.getElementById('shiftChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [{
+                        label: 'Waste (kg)',
+                        data: data.weights,
+                        backgroundColor: [colors.blue, colors.green, colors.amber],
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } }
+                }
+            });
+        });
+    setTimeout(loadRecommendation, 1500);
+</script>
+{% endblock %}

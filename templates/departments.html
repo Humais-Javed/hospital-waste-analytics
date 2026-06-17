@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+
+{% block title %}Departments - MedWaste Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Department Performance Overview</h1>
+    <p class="page-subtitle">Waste generation analysis by hospital department</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Avg Daily Waste</div>
+        <div class="kpi-value blue">{{ "{:,.0f}".format(kpis.avg_daily_waste) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">Per day average</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Dept Highest Cost</div>
+        <div class="kpi-value green">{{ kpis.highest_cost_dept }}</div>
+        <div class="kpi-sublabel">Highest cost dept this month: ${{ "{:,.0f}".format(kpis.highest_cost_amount) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Highest Generating</div>
+        <div class="kpi-value amber">{{ kpis.highest_dept }}</div>
+        <div class="kpi-sublabel">{{ "{:,.0f}".format(kpis.highest_dept_waste) }} kg total</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">
+            <select id="momDeptSelect" style="background: transparent; border: none; color: var(--text-muted); font-size: 14px; font-weight: 500; cursor: pointer; padding: 0; margin: 0; width: 100%; outline: none;">
+                <option value="All Departments">Month-over-Month ▾</option>
+            </select>
+        </div>
+        <div class="kpi-value" id="momValue">
+            <span class="{% if kpis.month_change >= 0 %}red{% else %}green{% endif %}">
+                {{ "{:+.1f}".format(kpis.month_change) }}%
+            </span>
+        </div>
+        <div class="kpi-sublabel" id="momSublabel">All departments combined</div>
+    </div>
+</div>
+
+<!-- Row 1: Department Waste Heatmap (Full Width) -->
+<div class="chart-card" style="margin-bottom: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">Department Waste Heatmap</h3>
+            <p class="chart-subtitle">Top 10 departments × Months | Color intensity = waste volume</p>
+        </div>
+    </div>
+    <div class="chart-container" style="height: 380px; overflow: auto;">
+        <div id="heatmapContainer"></div>
+        <!-- Color Legend -->
+        <div class="heatmap-legend">
+            <span class="legend-label">Less waste</span>
+            <div class="legend-gradient"></div>
+            <span class="legend-label">More waste</span>
+        </div>
+    </div>
+</div>
+
+<!-- Row 2: Departments by Waste Type + Shift Output Breakdown -->
+<div class="chart-grid">
+    <!-- Departments by Waste Type (Stacked Bar) -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Departments by Waste Type</h3>
+                <p class="chart-subtitle">Top 5 & Bottom 5 departments</p>
+            </div>
+            <button class="export-btn" onclick="exportHeatmap()" title="Export to Excel">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Export
+            </button>
+        </div>
+        <div class="chart-container" style="height: 350px;">
+            <canvas id="wasteTypeChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Shift Output Breakdown -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Shift Output Breakdown</h3>
+                <p class="chart-subtitle">Waste by shift per top 10 departments</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 350px;">
+            <canvas id="shiftChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Row 3: AI Insights (Full Width) -->
+<div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">AI Insights</h3>
+            <p class="chart-subtitle">Department performance analysis</p>
+        </div>
+    </div>
+    <div style="padding: 0 20px 20px;">
+        <div class="ai-content" id="aiRecommendation" style="font-size: 14px; margin-bottom: 16px;">
+            <div class="ai-loading">Analyzing department data...</div>
+        </div>
+        <div class="ai-chat-container" style="display: flex; gap: 8px;">
+            <input type="text" id="chatInput" placeholder="Ask about department waste patterns..." style="flex: 1; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 14px;">
+            <button id="chatSend" style="padding: 10px 16px; background: var(--accent-blue); border: none; border-radius: 6px; color: white; cursor: pointer;">Send</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .export-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .export-btn:hover {
+        background: var(--accent-blue);
+        color: white;
+        border-color: var(--accent-blue);
+    }
+    
+    /* Heatmap styles */
+    .heatmap-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        table-layout: fixed;
+    }
+    .heatmap-table th {
+        padding: 8px 6px;
+        text-align: center;
+        color: var(--text-muted);
+        font-weight: 500;
+        white-space: nowrap;
+    }
+    .heatmap-table td {
+        padding: 10px 6px;
+        text-align: center;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+    .heatmap-table .dept-name {
+        text-align: left;
+        color: var(--text-secondary);
+        font-weight: 500;
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    /* Heatmap Legend */
+    .heatmap-legend {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-top: 16px;
+        padding-top: 12px;
+        border-top: 1px solid var(--border-color);
+    }
+    .heatmap-legend .legend-label {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+    .heatmap-legend .legend-gradient {
+        width: 200px;
+        height: 12px;
+        border-radius: 6px;
+        background: linear-gradient(to right, rgba(139, 92, 246, 0.1), rgba(139, 92, 246, 0.9));
+    }
+    
+    /* MoM Dropdown Styling */
+    #momDeptSelect {
+        appearance: none;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+    }
+    #momDeptSelect option {
+        background: var(--card-bg);
+        color: var(--text-primary);
+        padding: 8px;
+    }
+</style>
+
+<script>
+    const deptColors = [
+        '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#6366f1',
+        '#14b8a6', '#a855f7', '#0ea5e9', '#f472b6', '#22c55e',
+        '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#4f46e5',
+        '#0d9488', '#9333ea', '#0284c7', '#be185d', '#16a34a',
+        '#5b21b6', '#0e7490', '#9d174d', '#4d7c0f', '#4338ca',
+        '#115e59', '#86198f'
+    ];
+
+    function exportHeatmap() {
+        window.location.href = fetchWithFilters('/api/export/department-heatmap');
+    }
+
+    // Load department MoM changes for dropdown
+    fetch('/api/department-mom-changes')
+        .then(res => res.json())
+        .then(data => {
+            const select = document.getElementById('momDeptSelect');
+            select.innerHTML = '';
+            
+            data.forEach((item, idx) => {
+                const option = document.createElement('option');
+                option.value = item.department;
+                option.textContent = idx === 0 ? 'Month-over-Month ▾' : item.department;
+                option.dataset.change = item.change;
+                select.appendChild(option);
+            });
+            
+            select.addEventListener('change', function() {
+                const selected = this.options[this.selectedIndex];
+                const change = parseFloat(selected.dataset.change);
+                const dept = selected.value;
+                
+                const valueEl = document.getElementById('momValue');
+                const sublabelEl = document.getElementById('momSublabel');
+                
+                const colorClass = change >= 0 ? 'red' : 'green';
+                const sign = change >= 0 ? '+' : '';
+                
+                valueEl.innerHTML = `<span class="${colorClass}">${sign}${change.toFixed(1)}%</span>`;
+                sublabelEl.textContent = dept === 'All Departments' ? 'All departments combined' : dept;
+            });
+        });
+
+    // Departments by Waste Type (Stacked Bar)
+    fetch(fetchWithFilters('/api/department-heatmap'))
+        .then(res => res.json())
+        .then(data => {
+            const wasteColors = { 'Yellow': '#eab308', 'Red': '#ef4444', 'Blue': '#3b82f6' };
+            
+            const labels = data.departments.map((dept, idx) => idx === 5 ? '― ' + dept : dept);
+            
+            const datasets = data.waste_types.map((wt, idx) => ({
+                label: wt,
+                data: data.data.map(row => row[idx]),
+                backgroundColor: wasteColors[wt] || deptColors[idx],
+                borderRadius: 4
+            }));
+            
+            new Chart(document.getElementById('wasteTypeChart'), {
+                type: 'bar',
+                data: { labels: labels, datasets: datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { stacked: true, grid: { color: '#2a3548' }, ticks: { callback: val => val.toLocaleString() + ' kg' } },
+                        y: { stacked: true, grid: { display: false } }
+                    }
+                }
+            });
+        });
+
+    // Department Waste Heatmap
+    fetch(fetchWithFilters('/api/department-month-heatmap'))
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('heatmapContainer');
+            
+            if (data.departments.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">No data available</p>';
+                return;
+            }
+            
+            const maxVal = data.max_value;
+            
+            let html = '<table class="heatmap-table"><thead><tr><th style="width: 140px;">Department</th>';
+            data.months.forEach(m => { html += `<th>${m}</th>`; });
+            html += '</tr></thead><tbody>';
+            
+            data.departments.forEach((dept, deptIdx) => {
+                html += `<tr><td class="dept-name" title="${dept}">${dept}</td>`;
+                data.data[deptIdx].forEach(val => {
+                    const intensity = maxVal > 0 ? val / maxVal : 0;
+                    const bgColor = `rgba(139, 92, 246, ${0.1 + intensity * 0.8})`;
+                    const textColor = intensity > 0.5 ? '#fff' : 'var(--text-secondary)';
+                    html += `<td style="background: ${bgColor}; color: ${textColor};" title="${val.toLocaleString()} kg">${val > 0 ? Math.round(val/1000) + 'k' : '-'}</td>`;
+                });
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            container.innerHTML = html;
+        });
+
+    // Shift Output Breakdown
+    fetch(fetchWithFilters('/api/shift-by-department'))
+        .then(res => res.json())
+        .then(data => {
+            new Chart(document.getElementById('shiftChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.departments,
+                    datasets: [
+                        { label: 'Shift A', data: data.shift_a, backgroundColor: '#8b5cf6', borderRadius: 4 },
+                        { label: 'Shift B', data: data.shift_b, backgroundColor: '#06b6d4', borderRadius: 4 },
+                        { label: 'Shift C', data: data.shift_c, backgroundColor: '#ec4899', borderRadius: 4 }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxRotation: 45, minRotation: 45 } },
+                        y: { grid: { color: '#2a3548' }, ticks: { callback: val => val.toLocaleString() + ' kg' } }
+                    }
+                }
+            });
+        });
+
+    // AI Recommendation
+    fetch('/api/ai-recommendation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ page: 'departments' })
+    })
+    .then(res => res.json())
+    .then(data => {
+        document.getElementById('aiRecommendation').innerHTML = '<p>' + (data.recommendation || 'AI insights unavailable.') + '</p>';
+    })
+    .catch(() => {
+        document.getElementById('aiRecommendation').innerHTML = '<p style="color: var(--text-muted);">AI insights unavailable.</p>';
+    });
+
+    // AI Chat
+    document.getElementById('chatSend').addEventListener('click', sendChat);
+    document.getElementById('chatInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') sendChat();
+    });
+
+    function sendChat() {
+        const input = document.getElementById('chatInput');
+        const question = input.value.trim();
+        if (!question) return;
+        
+        document.getElementById('aiRecommendation').innerHTML = '<p style="color: var(--text-muted);">Thinking...</p>';
+        input.value = '';
+        
+        fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: question, page: 'departments' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById('aiRecommendation').innerHTML = '<p>' + (data.response || 'Could not get response.') + '</p>';
+        })
+        .catch(() => {
+            document.getElementById('aiRecommendation').innerHTML = '<p style="color: var(--text-muted);">AI unavailable.</p>';
+        });
+    }
+</script>
+{% endblock %}

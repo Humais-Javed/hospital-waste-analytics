@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+{% block title %}Optimization Model - MedWaste Dashboard{% endblock %}
+
+{% block extra_filters %}
+<!-- Strategy Buttons (replaces date filters) -->
+<div class="strategy-buttons">
+    <button class="strategy-btn {% if strategy == 'min_cost' %}active{% endif %}" 
+            onclick="setStrategy('min_cost')">Min Cost</button>
+    <button class="strategy-btn {% if strategy == 'min_emissions' %}active{% endif %}" 
+            onclick="setStrategy('min_emissions')">Min Emissions</button>
+    <button class="strategy-btn {% if strategy == 'recommended' %}active{% endif %}" 
+            onclick="setStrategy('recommended')">★ Recommended</button>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Optimization Model</h1>
+    <p class="page-subtitle">Multi-objective LP optimization for cost and emissions reduction · Base year 2025</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Optimized Annual Cost</div>
+        <div class="kpi-value blue">${{ "{:,.0f}".format(kpis.optimized_cost) }}</div>
+        <div class="kpi-sublabel">Baseline: ${{ "{:,.0f}".format(kpis.baseline_cost) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Annual Cost Saving</div>
+        <div class="kpi-value green">${{ "{:,.0f}".format(kpis.cost_saving) }}</div>
+        <div class="kpi-sublabel">{{ "{:.1f}".format(kpis.cost_reduction_pct) }}% cost reduction</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Annual CO₂e</div>
+        <div class="kpi-value amber">{{ "{:,.0f}".format(kpis.optimized_emissions) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">Baseline: {{ "{:,.0f}".format(kpis.baseline_emissions) }} kg</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Emissions Reduction</div>
+        <div class="kpi-value {% if kpis.emissions_reduction_pct >= 0 %}green{% else %}red{% endif %}">{{ "{:,.0f}".format(kpis.emissions_saving) }} <span style="font-size: 18px;">kg</span></div>
+        <div class="kpi-sublabel">{{ "{:+.1f}".format(kpis.emissions_reduction_pct) }}% CO₂e change</div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="chart-grid">
+    <!-- Treatment Allocation -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Optimal Treatment Allocation by Waste Stream</h3>
+                <p class="chart-subtitle">Volume (kg/yr) assigned to each treatment method</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 400px;">
+            <canvas id="allocationChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Pareto Frontier -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Cost vs. CO₂e Trade-Off</h3>
+                <p class="chart-subtitle">Three optimization strategies compared</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 400px;">
+            <canvas id="paretoChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Routing Table -->
+<div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">Optimization Routing Strategy</h3>
+            <p class="chart-subtitle">Optimal treatment assignments per waste stream · Base year 2025</p>
+        </div>
+        <button class="export-btn" onclick="exportRouting()" title="Export to Excel">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            Export
+        </button>
+    </div>
+    <div style="overflow-x: auto;">
+        <table class="routing-table" id="routingTable">
+            <thead>
+                <tr>
+                    <th>Waste Stream</th>
+                    <th>Vol (kg/yr)</th>
+                    <th>Treatment</th>
+                    <th>Annual Cost</th>
+                    <th>CO₂e (kg)</th>
+                    <th>Flexibility</th>
+                    <th>Compliance</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr><td colspan="7" style="text-align: center;">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .strategy-buttons {
+        display: flex;
+        gap: 8px;
+    }
+    .strategy-btn {
+        padding: 8px 16px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .strategy-btn:hover {
+        border-color: var(--accent-blue);
+        color: var(--accent-blue);
+    }
+    .strategy-btn.active {
+        background: var(--accent-blue);
+        border-color: var(--accent-blue);
+        color: white;
+    }
+    .export-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        color: var(--text-secondary);
+        font-size: 13px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .export-btn:hover {
+        background: var(--accent-blue);
+        color: white;
+        border-color: var(--accent-blue);
+    }
+    .routing-table {
+        width: 100%;
+        font-size: 14px;
+        color: var(--text-secondary);
+        border-collapse: collapse;
+    }
+    .routing-table th {
+        text-align: left;
+        padding: 12px;
+        color: var(--text-muted);
+        border-bottom: 2px solid var(--border-color);
+        font-weight: 500;
+    }
+    .routing-table td {
+        padding: 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .routing-table tr:hover {
+        background: rgba(255,255,255,0.02);
+    }
+    .badge-variable {
+        background: rgba(16, 185, 129, 0.15);
+        color: #10b981;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    .badge-fixed {
+        background: rgba(239, 68, 68, 0.15);
+        color: #ef4444;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+    }
+    .badge-compliant {
+        color: #10b981;
+    }
+</style>
+
+<script>
+    const currentStrategy = '{{ strategy }}';
+    
+    function setStrategy(strategy) {
+        window.location.href = `/optimization?strategy=${strategy}`;
+    }
+    
+    function exportRouting() {
+        window.location.href = `/api/export/optimization-routing?strategy=${currentStrategy}`;
+    }
+
+    // Treatment Allocation Chart (Horizontal Stacked Bar)
+    fetch(`/api/optimization-allocation?strategy=${currentStrategy}`)
+        .then(res => res.json())
+        .then(data => {
+            new Chart(document.getElementById('allocationChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.streams,
+                    datasets: [
+                        {
+                            label: 'Incineration',
+                            data: data.incineration,
+                            backgroundColor: '#ef4444',
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Autoclave',
+                            data: data.autoclave,
+                            backgroundColor: '#f59e0b',
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Recycling',
+                            data: data.recycling,
+                            backgroundColor: '#10b981',
+                            borderRadius: 4
+                        },
+                        {
+                            label: 'Landfill',
+                            data: data.landfill,
+                            backgroundColor: '#6b7280',
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: 'y',
+                    plugins: {
+                        legend: { position: 'top' }
+                    },
+                    scales: {
+                        x: { 
+                            stacked: true,
+                            grid: { color: '#2a3548' },
+                            ticks: { callback: val => (val/1000).toLocaleString() + 'k kg' }
+                        },
+                        y: { 
+                            stacked: true,
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        });
+
+    // Pareto Chart - Strategy-specific points + curve
+    fetch(`/api/optimization-pareto?strategy=${currentStrategy}`)
+        .then(res => res.json())
+        .then(data => {
+            const mainPoint = data.main_point;
+            const alternatives = data.alternatives || [];
+            
+            console.log('Pareto data:', currentStrategy, 'Main:', mainPoint, 'Alternatives:', alternatives.length);
+            
+            const datasets = [];
+            
+            // Collect all points to calculate axis bounds
+            const allCosts = [];
+            const allEmissions = [];
+            
+            if (mainPoint) {
+                allCosts.push(mainPoint.cost);
+                allEmissions.push(mainPoint.emissions);
+            }
+            alternatives.forEach(p => {
+                allCosts.push(p.cost);
+                allEmissions.push(p.emissions);
+            });
+            
+            // Calculate bounds with padding
+            const costMin = Math.min(...allCosts);
+            const costMax = Math.max(...allCosts);
+            const emissionsMin = Math.min(...allEmissions);
+            const emissionsMax = Math.max(...allEmissions);
+            
+            const costPadding = (costMax - costMin) * 0.1 || 1000;  // 10% padding or $1k if no range
+            const emissionsPadding = (emissionsMax - emissionsMin) * 0.1 || 1000;
+            
+            // Add alternatives first (behind main point)
+            if (alternatives.length > 0) {
+                // Sort by emissions for a smooth curve
+                const sortedAlts = [...alternatives].sort((a, b) => a.emissions - b.emissions);
+                
+                // Alternative points (connected with curve)
+                datasets.push({
+                    label: 'Alternative Solutions',
+                    data: sortedAlts.map(p => ({ x: p.cost, y: p.emissions })),
+                    backgroundColor: 'rgba(148, 163, 184, 0.4)',
+                    borderColor: 'rgba(99, 102, 241, 0.8)',
+                    pointRadius: 4,
+                    pointHoverRadius: 6,
+                    showLine: true,
+                    tension: 0.4,
+                    borderWidth: 2,
+                    fill: false,
+                    order: 2
+                });
+            }
+            
+            // Main point (large, prominent)
+            if (mainPoint) {
+                let pointStyle = 'circle';
+                let radius = 16;
+                
+                if (mainPoint.marker === 'star') {
+                    pointStyle = 'star';
+                    radius = 20;
+                } else if (mainPoint.marker === 'triangle') {
+                    pointStyle = 'triangle';
+                    radius = 16;
+                } else if (mainPoint.marker === 'diamond') {
+                    pointStyle = 'rectRot';
+                    radius = 16;
+                }
+                
+                datasets.push({
+                    label: mainPoint.label,
+                    data: [{ x: mainPoint.cost, y: mainPoint.emissions }],
+                    backgroundColor: mainPoint.color,
+                    borderColor: 'white',
+                    borderWidth: 3,
+                    pointRadius: radius,
+                    pointHoverRadius: radius + 4,
+                    pointStyle: pointStyle,
+                    order: 1
+                });
+            }
+            
+            new Chart(document.getElementById('paretoChart'), {
+                type: 'scatter',
+                data: { datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'top',
+                            labels: {
+                                usePointStyle: true,
+                                padding: 16
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(ctx) {
+                                    const cost = ctx.parsed.x;
+                                    const emissions = ctx.parsed.y;
+                                    return [
+                                        `Cost: $${cost.toLocaleString()}`,
+                                        `CO₂e: ${emissions.toLocaleString()} kg`
+                                    ];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: { display: true, text: 'Annual Cost ($)', color: 'var(--text-muted)' },
+                            grid: { color: '#2a3548' },
+                            min: costMin - costPadding,
+                            max: costMax + costPadding,
+                            ticks: { 
+                                callback: val => '$' + (val/1000).toFixed(1) + 'k',
+                                maxTicksLimit: 8
+                            }
+                        },
+                        y: {
+                            title: { display: true, text: 'Annual CO₂e (kg)', color: 'var(--text-muted)' },
+                            grid: { color: '#2a3548' },
+                            min: emissionsMin - emissionsPadding,
+                            max: emissionsMax + emissionsPadding,
+                            ticks: { 
+                                callback: val => (val/1000).toFixed(0) + 'k',
+                                maxTicksLimit: 8
+                            }
+                        }
+                    }
+                }
+            });
+        });
+
+    // Routing Table
+    fetch(`/api/optimization-routing?strategy=${currentStrategy}`)
+        .then(res => res.json())
+        .then(data => {
+            const tbody = document.querySelector('#routingTable tbody');
+            tbody.innerHTML = data.map(row => `
+                <tr>
+                    <td style="font-weight: 500;">${row.stream}</td>
+                    <td>${row.volume.toLocaleString()}</td>
+                    <td>${row.treatment}</td>
+                    <td>$${row.cost.toLocaleString()}</td>
+                    <td style="color: ${row.emissions < 0 ? '#10b981' : 'inherit'}">${row.emissions.toLocaleString()}</td>
+                    <td><span class="badge-${row.flexibility.toLowerCase()}">${row.flexibility}</span></td>
+                    <td class="badge-compliant">${row.compliance ? '✓ Compliant' : '✗'}</td>
+                </tr>
+            `).join('');
+        });
+</script>
+{% endblock %}

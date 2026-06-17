@@ -1,0 +1,10 @@
+flask
+flask-sqlalchemy
+flask-login
+pandas
+openpyxl
+openai
+python-dotenv
+werkzeug
+gunicorn
+gunicorn

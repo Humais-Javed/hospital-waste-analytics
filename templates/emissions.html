@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}Emissions - MedWaste Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Emissions</h1>
+    <p class="page-subtitle">CO₂e emissions tracking across medical and general waste streams</p>
+</div>
+
+<!-- KPI Cards -->
+<div class="kpi-grid">
+    <div class="kpi-card">
+        <div class="kpi-label">Total CO₂e Emissions</div>
+        <div class="kpi-value blue">{{ "{:,.0f}".format(kpis.total_emissions) }} <span style="font-size: 18px;">kgCO₂e</span></div>
+        <div class="kpi-sublabel">Combined emissions (general + med)</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">CO₂e per kg Waste</div>
+        <div class="kpi-value amber">{{ "{:.3f}".format(kpis.co2e_per_kg) }} <span style="font-size: 18px;">kgCO₂e/kg</span></div>
+        <div class="kpi-sublabel">Per kilogram of waste</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Emissions Avoided by Recycling</div>
+        <div class="kpi-value green">{{ "{:,.0f}".format(kpis.emissions_avoided) }} <span style="font-size: 18px;">kgCO₂e</span></div>
+        <div class="kpi-sublabel">Landfill CO₂e minus recycling CO₂e</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Change vs 2022 Baseline</div>
+        <div class="kpi-value {% if kpis.change_vs_2022 < 0 %}green{% else %}red{% endif %}">{{ "{:+.1f}".format(kpis.change_vs_2022) }}%</div>
+        <div class="kpi-sublabel">Compared to 2022 average</div>
+    </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="chart-grid">
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">CO₂e by Waste Type</h3>
+                <p class="chart-subtitle">Emissions breakdown over time</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="wasteTypeChart"></canvas>
+        </div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Emissions Trend</h3>
+                <p class="chart-subtitle">Transport and disposal over time (2024–2025)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="chart-grid">
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Recycling Emissions Avoided</h3>
+                <p class="chart-subtitle">CO₂e saved vs landfill disposal (2024–2025)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="recyclingChart"></canvas>
+        </div>
+    </div>
+
+    <div class="chart-card">
+        <div class="chart-header">
+            <div>
+                <h3 class="chart-title">Emissions by Source Over Time</h3>
+                <p class="chart-subtitle">Transport + Disposal stacked (2024–2025)</p>
+            </div>
+        </div>
+        <div class="chart-container" style="height: 320px;">
+            <canvas id="sourceChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- AI Insights -->
+<div class="chart-card" style="margin-top: 24px;">
+    <div class="chart-header">
+        <div>
+            <h3 class="chart-title">AI Insights</h3>
+            <p class="chart-subtitle">Analysis of emissions patterns</p>
+        </div>
+    </div>
+    <div class="ai-content" id="aiInsights">
+        <p style="color: var(--text-muted);">AI insights unavailable.</p>
+    </div>
+    <div class="ai-chat-container" style="margin-top: 16px; display: flex; gap: 8px;">
+        <input type="text" id="aiQuestion" placeholder="Ask a question about emissions..." style="flex: 1; padding: 10px 14px; background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-primary); font-size: 14px;">
+        <button onclick="askAI()" style="padding: 10px 16px; background: var(--accent-blue); border: none; border-radius: 6px; color: white; cursor: pointer;">Send</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const period = urlParams.get('period') || 'yearly';
+    const startDate = urlParams.get('start_date') || '';
+    const endDate = urlParams.get('end_date') || '';
+    const filterQuery = 'period=' + period + '&start_date=' + startDate + '&end_date=' + endDate;
+
+    // Chart 1: Emissions by Waste Type
+    fetch('/api/emissions-by-waste-type?' + filterQuery)
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            new Chart(document.getElementById('wasteTypeChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        {
+                            label: 'Chemotherapy (Blue)',
+                            data: data.blue,
+                            backgroundColor: '#3b82f6'
+                        },
+                        {
+                            label: 'Highly Infectious (Red)',
+                            data: data.red,
+                            backgroundColor: '#ef4444'
+                        },
+                        {
+                            label: 'Infectious & Anatomical (Yellow)',
+                            data: data.yellow,
+                            backgroundColor: '#eab308'
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { stacked: true, grid: { display: false } },
+                        y: { stacked: true, grid: { color: '#2a3548' } }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('wasteTypeChart error:', err); });
+
+    // Chart 2: Emissions Trend
+    fetch('/api/emissions-trend')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.error) {
+                document.getElementById('trendChart').parentElement.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px;">' + data.error + '</p>';
+                return;
+            }
+            new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Transport', data: data.transport, borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderWidth: 2, pointRadius: 3, tension: 0.3, hidden: false },
+                        { label: 'Disposal', data: data.disposal, borderColor: '#8b5cf6', backgroundColor: '#8b5cf6', borderWidth: 2, pointRadius: 3, tension: 0.3, hidden: true },
+                        { label: 'Total', data: data.total, borderColor: '#10b981', backgroundColor: '#10b981', borderWidth: 2, pointRadius: 3, tension: 0.3, hidden: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { color: '#2a3548' } },
+                        y: { grid: { color: '#2a3548' } }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('trendChart error:', err); });
+
+    // Chart 3: Recycling vs Landfill
+    fetch('/api/recycling-vs-landfill')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.error) {
+                document.getElementById('recyclingChart').parentElement.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px;">' + data.error + '</p>';
+                return;
+            }
+            new Chart(document.getElementById('recyclingChart'), {
+                type: 'bar',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Recycling Emissions', data: data.recycling, backgroundColor: '#10b981' },
+                        { label: 'Landfill Emissions', data: data.landfill, backgroundColor: '#64748b' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { grid: { color: '#2a3548' } }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('recyclingChart error:', err); });
+
+    // Chart 4: Emissions by Source
+    fetch('/api/emissions-by-source')
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            if (data.error) {
+                document.getElementById('sourceChart').parentElement.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 40px;">' + data.error + '</p>';
+                return;
+            }
+            new Chart(document.getElementById('sourceChart'), {
+                type: 'line',
+                data: {
+                    labels: data.labels,
+                    datasets: [
+                        { label: 'Transport', data: data.transport, borderColor: '#f59e0b', backgroundColor: 'rgba(245, 158, 11, 0.3)', fill: true, tension: 0.3, hidden: false },
+                        { label: 'Disposal', data: data.disposal, borderColor: '#8b5cf6', backgroundColor: 'rgba(139, 92, 246, 0.3)', fill: true, tension: 0.3, hidden: true }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        x: { grid: { color: '#2a3548' } },
+                        y: { stacked: true, grid: { color: '#2a3548' } }
+                    }
+                }
+            });
+        })
+        .catch(function(err) { console.error('sourceChart error:', err); });
+
+    // AI Chat function
+    window.askAI = function() {
+        var question = document.getElementById('aiQuestion').value;
+        if (!question.trim()) return;
+        
+        document.getElementById('aiInsights').innerHTML = '<p style="color: var(--text-muted);">Thinking...</p>';
+        
+        fetch('/api/ai-chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question: question, page: 'emissions' })
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(data) {
+            document.getElementById('aiInsights').innerHTML = '<p>' + (data.response || 'Could not get response.') + '</p>';
+            document.getElementById('aiQuestion').value = '';
+        })
+        .catch(function() {
+            document.getElementById('aiInsights').innerHTML = '<p style="color: var(--text-muted);">AI unavailable.</p>';
+        });
+    };
+
+    document.getElementById('aiQuestion').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') window.askAI();
+    });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Compliance - MedWaste{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Compliance & KPIs</h1>
+    <p class="page-subtitle">Regulatory compliance and target tracking</p>
+</div>
+
+<div class="kpi-grid">
+    <div class="kpi-card placeholder">
+        <div class="kpi-label">Segregation Accuracy</div>
+        <div class="kpi-value green">95%</div>
+        <div class="kpi-sublabel">Target: 95%</div>
+    </div>
+    <div class="kpi-card placeholder">
+        <div class="kpi-label">Compliance Rate</div>
+        <div class="kpi-value green">98%</div>
+        <div class="kpi-sublabel">Regulatory compliance</div>
+    </div>
+    <div class="kpi-card placeholder">
+        <div class="kpi-label">Incidents</div>
+        <div class="kpi-value blue">3</div>
+        <div class="kpi-sublabel">This month</div>
+    </div>
+    <div class="kpi-card placeholder">
+        <div class="kpi-label">Audit Score</div>
+        <div class="kpi-value purple">A+</div>
+        <div class="kpi-sublabel">Last audit</div>
+    </div>
+</div>
+
+<div class="chart-grid">
+    <div class="chart-card placeholder">
+        <div class="chart-header"><h3 class="chart-title">Compliance Trend</h3></div>
+        <div class="chart-container">
+            <p style="text-align: center; color: var(--text-muted); padding-top: 100px;">
+                Compliance tracking requires additional data fields
+            </p>
+        </div>
+    </div>
+    
+    <div class="ai-card">
+        <div class="ai-header">
+            <div class="ai-icon">🤖</div>
+            <div><div class="ai-title">AI Insights</div></div>
+        </div>
+        <div class="ai-content" id="aiRecommendation"><div class="ai-loading">Analyzing...</div></div>
+        <div class="ai-chat">
+            <div class="ai-chat-history" id="chatHistory"></div>
+            <div class="ai-chat-input">
+                <input type="text" id="chatInput" placeholder="Ask about compliance..." />
+                <button id="chatSend">→</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    setTimeout(loadRecommendation, 1500);
+</script>
+{% endblock %}

@@ -1,0 +1,29 @@
+# Environment & secrets
+.env
+
+# Confidential hospital data — NEVER commit
+data/
+*.xlsx
+*.xls
+
+# Python
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Database
+instance/
+*.db
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
